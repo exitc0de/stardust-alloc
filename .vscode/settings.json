@@ -1,9 +1,0 @@
-{
-    "files.associations": {
-        "mm.h": "c",
-        "smalloc.h": "c",
-        "xmalloc.h": "c",
-        "time.h": "c",
-        "stdio.h": "c"
-    }
-}
