@@ -48,8 +48,9 @@ DEF_CFLAGS += -DCONFIG_PREEMPT -DCONFIG_SMP
 DEF_CFLAGS += $(STARDUST_CFLAG)
 
 DEF_ASFLAGS = -D__ASSEMBLY__
-DEF_LDFLAGS = -no-stack-protector
-DEF_LDFLAGS += --allow-multiple-definition
+#DEF_LDFLAGS = -no-stack-protector
+#DEF_LDFLAGS += --allow-multiple-definition
+DEF_LDFLAGS = --allow-multiple-definition
 
 ifeq ($(debug), y)
 DEF_CFLAGS += -g

@@ -19,6 +19,9 @@
 #include <os/startup.h>
 #include <os/console.h>
 #include <os/sched.h>
+#include <os/smalloc.h>
+#include <os/smalloc_test.h>
+#include <os/smalloc_eval.h>
 #include <errno.h>
 #include <string.h>
 #include <stdio.h>
@@ -53,6 +56,49 @@ void fs_test_thread(void *p)
 }
 #endif
 
+
+
+void* smalloc_tests_thread(void *args) {
+   printk("Thread 1!\n");
+
+   //char* my_array = smalloc(100, 1);
+   //my_array[10] = 't';
+   //printk("my_array[10] = %c\n", my_array[10]);
+   // you cn create any othreads you want under here
+   //sched_print_threads();
+   tests();
+   tests();
+   tests();
+   //tests();
+   //printk("DONE\n");
+   return NULL;
+}
+
+void* smalloc_tests_thread_two(void *args) {
+	printk("Thread 2!\n");
+	tests();
+	tests();
+	tests();
+
+	return NULL;
+}
+
+void three_smalloc_test_threads(void *args) {
+	do_test(5, 10000);
+	// pthread_t first;
+	// pthread_t second;
+	// pthread_t third;
+	// pthread_create(&first, NULL, smalloc_tests_thread, NULL);
+	// pthread_create(&second, NULL, smalloc_tests_thread_two, NULL);
+	// pthread_create(&third, NULL, smalloc_tests_thread, NULL);
+
+	// pthread_join(first, NULL);
+	// pthread_join(second, NULL);
+	// pthread_join(third, NULL);
+	return;
+}
+
+
 __attribute__((weak)) int app_main(struct app_main_args *aargs)
 {
 
@@ -60,6 +106,9 @@ __attribute__((weak)) int app_main(struct app_main_args *aargs)
 an external application that defines the same function. Currently, in this
 function we provide a list of default tests.
 */
+
+	printf("Hello: Startdust is running?\n");
+	create_thread("three_smalloc_test_threads", three_smalloc_test_threads, UKERNEL_FLAG, NULL);
 
 #ifdef ENABLE_PTE_TESTS
 	/* Example for running the pthread tests. Please note that these tests 

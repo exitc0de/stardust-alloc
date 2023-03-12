@@ -34,7 +34,7 @@
 // #define ENABLE_FS
 
 /* Permits the kernel to compile with POSIX threads tests */
-// #define ENABLE_PTE_TESTS
+//#define ENABLE_PTE_TESTS
 
 /* Java support requires libraries from the packages repository */ 
 // #define ENABLE_JAVA
