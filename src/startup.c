@@ -84,6 +84,8 @@ void* smalloc_tests_thread_two(void *args) {
 }
 
 void three_smalloc_test_threads(void *args) {
+	// smalloc(2005, 1);
+	// print_regions();
 	do_test(5, 10000);
 	// pthread_t first;
 	// pthread_t second;

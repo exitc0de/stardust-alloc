@@ -8,7 +8,7 @@
 #include <pthread.h>
 #include <stdbool.h>
 
-#define NUM_BINS 10
+#define NUM_BINS 20
 //#define PAGE_SIZE 4096
 #define HEADER_SIZE sizeof(struct mem_blk_header)
 #define ALIGNMENT 8
@@ -21,9 +21,10 @@
 struct region
 {
     unsigned int id; // TODO: we might not need this
-    // 0  1   2   3   4    5    6    7    8     9
+    // For 20 bins:
+    // 0  1  2  3  4   5   6   7   8   9   10  11  12  13  14  15   16   17   18   19
     // up to:
-    // 64 128 256 512 1024 2048 4096 8192 16384 MAX
+    // 48 64 80 96 112 128 144 160 176 192 208 224 240 256 512 1024 2048 4096 8192 MAX
     struct free_blk_header *first_frees[NUM_BINS];
     pthread_mutex_t free_list_lock;
     struct page_list_node *page_list_head;
@@ -52,6 +53,7 @@ struct free_blk_header
     size_t size;
     struct free_blk_header* prev;
     struct free_blk_header* next;
+    unsigned int region_id;
 };
 
 // Global statically declared array of region pointers
@@ -75,5 +77,6 @@ void thread_local_sfree(void* payload_start);
 void check_and_init_regions(unsigned int region_id);
 void put_blk_on_free_list(struct free_blk_header *blk, unsigned int region_id);
 unsigned long long get_thread_id();
+void print_info();
 
 #endif //_SMALLOC_H_

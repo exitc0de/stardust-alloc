@@ -10,8 +10,9 @@
 #include <os/sched.h>
 #include <os/time.h>
 
-//#define DEBUG
+// #define DEBUG
 #define STARDUST
+#define FAST_COALESCING
 
 #ifdef DEBUG
 #define DEBUG_PRINT(...) printf(__VA_ARGS__)
@@ -31,11 +32,25 @@ struct region region_zero = {
     NULL,
     NULL,
     NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
     PTHREAD_MUTEX_INITIALIZER,
     NULL,
     NULL}; // globally declared region_zero
 
 pthread_mutex_t regions_lock = PTHREAD_MUTEX_INITIALIZER;
+
+unsigned int steps = 0;
+unsigned int extends = 0;
+unsigned int allocs = 0;
 
 unsigned long long get_thread_id()
 {
@@ -72,43 +87,35 @@ void *fetch_page(unsigned int pages)
 }
 unsigned int get_bin_index_from_size(size_t size)
 {
-    if (size <= 64)
+    if (size <= 256)
     {
-        return 0;
+        int i = ((int)(size - 1) / 16) - 2;
+        if (i <= 0) {
+            return 0;
+        }
+        return i;
     }
-    else if (size <= 128)
+    if (size <= 512)
     {
-        return 1;
-    }
-    else if (size <= 256)
-    {
-        return 2;
-    }
-    else if (size <= 512)
-    {
-        return 3;
+        return 14;
     }
     else if (size <= 1024)
     {
-        return 4;
+        return 15;
     }
     else if (size <= 2048)
     {
-        return 5;
+        return 16;
     }
     else if (size <= 4096)
     {
-        return 6;
+        return 17;
     }
     else if (size <= 8192)
     {
-        return 7;
+        return 18;
     }
-    else if (size <= 16384)
-    {
-        return 8;
-    }
-    return 9;
+    return 19;
 }
 
 size_t ptr_distance(char *p1, char *p2)
@@ -125,7 +132,7 @@ bool is_alloc(struct mem_blk_header *header)
 void put_blk_on_free_list(struct free_blk_header *blk, unsigned int region_id)
 {
     unsigned int index = get_bin_index_from_size(blk->size);
-    DEBUG_PRINT("Region %i: Placing blk %p on free list, bin index = %u, size = %zu!\n", region_id, blk, index, blk->size);
+    DEBUG_PRINT("Region %i: Placing blk %p on free list, bin index = %u, size = %lu!\n", region_id, blk, index, blk->size);
 
     blk->prev = NULL;
 
@@ -234,6 +241,7 @@ void init_region(unsigned int region_id)
 // Extend heap of given region by fetching more pages and maintaining correct block and free/page list structures
 struct free_blk_header *extend_region_heap(size_t blk_size, unsigned int region_id)
 {
+    extends++;
     unsigned int num_pages = (blk_size + (PAGE_SIZE - 1)) / PAGE_SIZE; // TODO: Replace with ceil function from math.h
     struct page_list_node *new_page_node;
     struct free_blk_header *new_free_blk;
@@ -245,8 +253,10 @@ struct free_blk_header *extend_region_heap(size_t blk_size, unsigned int region_
         num_pages = (ext_blk_size + (PAGE_SIZE - 1)) / PAGE_SIZE;
     }
 
+    DEBUG_PRINT("Region %i: Fetching %i pages\n", region_id, num_pages);
     new_free_blk = fetch_page(num_pages);
     set_headers((struct mem_blk_header *)new_free_blk, false, PAGE_SIZE * num_pages);
+    new_free_blk->region_id = region_id;
 
     // Place block in correct place on free list
     put_blk_on_free_list(new_free_blk, region_id);
@@ -256,8 +266,7 @@ struct free_blk_header *extend_region_heap(size_t blk_size, unsigned int region_
     // region 0
     if (region_id == 0)
     {
-        // TODO: FIX
-        // TODO: FIX
+        DEBUG_PRINT("Region %i: Creating new page list node from existing block!\n", region_id);
         struct free_blk_header *extra_free_blk = new_free_blk;
         // assign extra space in free block to a new page node
         new_page_node = (struct page_list_node *)((char *)
@@ -268,6 +277,7 @@ struct free_blk_header *extend_region_heap(size_t blk_size, unsigned int region_
     }
     else
     {
+        DEBUG_PRINT("Region %i: Allocating space for new page list node!\n", region_id);
         // otherwise use smalloc to allocate mem for page list node
         new_page_node = smalloc(sizeof(struct page_list_node), 0);
         new_page_node->page_start = new_free_blk;
@@ -289,12 +299,15 @@ struct free_blk_header *extend_region_heap(size_t blk_size, unsigned int region_
     }
     regions[region_id]->page_list_tail = new_page_node; // update tail
 
+    DEBUG_PRINT("Region %i: Heap extended!\n", region_id);
+
     return new_free_blk;
 }
 
 // From a given free block, mark allocated, update free list and region structures and return
 struct mem_blk_header *alloc_region_block(struct free_blk_header *free_blk, size_t blk_size, unsigned int region_id)
 {
+    DEBUG_PRINT("Region %i: Allocating %lu bytes to block %p of size %lu!\n", region_id, blk_size, free_blk, free_blk->size);
     void *end_of_free_blk = (char *)free_blk + free_blk->size;
     size_t extra_size = ptr_distance((char *)free_blk + blk_size, end_of_free_blk); // Should already be aligned
     unsigned int bin_index = get_bin_index_from_size(free_blk->size);
@@ -311,16 +324,16 @@ struct mem_blk_header *alloc_region_block(struct free_blk_header *free_blk, size
     // If this block was the first in free list
     if (regions[region_id]->first_frees[bin_index] == free_blk)
     {
-        DEBUG_PRINT("Region %i: Moved first free to: %p\n", region_id, free_blk->next);
         regions[region_id]->first_frees[bin_index] = free_blk->next;
     }
 
     if (extra_size > MIN_BLK_SIZE)
     {
-        // TODO: FIX
         struct free_blk_header *new_free_blk = (struct free_blk_header *)((char *)free_blk + blk_size);
         new_free_blk->size = extra_size;
+        new_free_blk->region_id = region_id;
         ((struct mem_blk_header *)((char *)new_free_blk + extra_size - HEADER_SIZE))->size = extra_size;
+        DEBUG_PRINT("Region %i: Split block %p, created new block of %lu bytes at %p!\n", region_id, free_blk, extra_size, new_free_blk);
         put_blk_on_free_list(new_free_blk, region_id);
     }
     else
@@ -328,7 +341,7 @@ struct mem_blk_header *alloc_region_block(struct free_blk_header *free_blk, size
         blk_size += extra_size;
     }
 
-    DEBUG_PRINT("Region %i: Marked block %p used!\n", region_id, free_blk);
+    DEBUG_PRINT("Region %i: Allocated block %p!\n", region_id, free_blk);
     set_headers((struct mem_blk_header *)free_blk, true, blk_size); // Mark allocated
 
     return (struct mem_blk_header *)free_blk;
@@ -346,6 +359,17 @@ void region_coalesce(struct free_blk_header **free_blk, unsigned int region_id)
     if (!is_alloc(left_tail) && left_tail->size != 0)
     {
         left_bin = get_bin_index_from_size(left_tail->size);
+#ifdef FAST_COALESCING
+        struct free_blk_header *left_head = (struct free_blk_header*)((char*) left_tail + HEADER_SIZE - left_tail->size);
+        if ((unsigned)*free_blk % PAGE_SIZE != 0 && left_head->region_id == region_id)
+        {
+            DEBUG_PRINT("Fast coalesce left successful! ptr = %p\n", *free_blk);
+            left_blk = left_head;
+        }
+        else {
+            DEBUG_PRINT("Fast coalesce left failed! ptr = %p\n", *free_blk);
+        }
+#else
         DEBUG_PRINT("Region %i: Traversing free list with bin index = %u looking for left_blk!\n", region_id, left_bin);
         struct free_blk_header *next_free = regions[region_id]->first_frees[left_bin];
 
@@ -358,12 +382,23 @@ void region_coalesce(struct free_blk_header **free_blk, unsigned int region_id)
             }
             next_free = next_free->next;
         }
+#endif
     }
 
     struct mem_blk_header *right_head = (struct mem_blk_header *)((char *)*free_blk + (*free_blk)->size);
     if (!is_alloc(right_head) && right_head->size != 0)
     {
         right_bin = get_bin_index_from_size(right_head->size);
+#ifdef FAST_COALESCING
+        if ((unsigned)right_head % PAGE_SIZE != 0 && ((struct free_blk_header*) right_head)->region_id == region_id)
+        {
+            DEBUG_PRINT("Fast coalesce right successful! ptr = %p\n", right_head);
+            right_blk = (struct free_blk_header*) right_head;
+        }
+        else {
+            DEBUG_PRINT("Fast coalesce right failed! right_head address = %p\n", right_head);
+        }
+#else
         DEBUG_PRINT("Region %i: Traversing free list with bin index = %u looking for right_blk!\n", region_id, right_bin);
         struct free_blk_header *next_free = regions[region_id]->first_frees[right_bin];
 
@@ -376,6 +411,7 @@ void region_coalesce(struct free_blk_header **free_blk, unsigned int region_id)
             }
             next_free = next_free->next;
         }
+#endif
     }
 
     size_t new_blk_size = (*free_blk)->size;
@@ -430,35 +466,32 @@ void region_coalesce(struct free_blk_header **free_blk, unsigned int region_id)
 
 void *smalloc(size_t size, unsigned int region_id)
 {
-    unsigned int steps = 0;
-    //    printf("Size = %zu\n", size);
     unsigned long long tid = get_thread_id();
-    //    clock_t tic = clock();
     check_and_init_regions(region_id);
-    //    clock_t toc_init = clock();
     pthread_mutex_lock(&(regions[region_id]->free_list_lock));
+    allocs++;
 
     void *return_mem = NULL;
     size_t blk_size = ALIGN(size + 2 * sizeof(struct mem_blk_header));
     if (blk_size < MIN_BLK_SIZE)
         blk_size = MIN_BLK_SIZE; // If size is below min, set to min
-    DEBUG_PRINT("Region %i: Entering smalloc -> allocating %zu bytes from thread id = %llu\n", region_id, blk_size, tid);
+    DEBUG_PRINT("Region %i: Entering smalloc -> allocating %lu bytes from thread id = %llu\n", region_id, blk_size, tid);
 
     unsigned int bin_index = get_bin_index_from_size(blk_size);
 
     // Find a block large enough in free list to allocate to
     for (unsigned int i = bin_index; i < NUM_BINS && !return_mem; i++)
     {
-        DEBUG_PRINT("Region %i: Traversing free list with bin index = %u!\n", region_id, i);
+        // DEBUG_PRINT("Region %i: Traversing free list with bin index = %u!\n", region_id, i);
         struct free_blk_header *next_free = regions[region_id]->first_frees[i];
 
         while (next_free)
         {
             steps++;
-            DEBUG_PRINT("Region %i: Looking at block at %p of size %zu\n", region_id, next_free, next_free->size);
+            // DEBUG_PRINT("Region %i: Looking at block at %p of size %lu\n", region_id, next_free, next_free->size);
             if (next_free->size > blk_size)
             {
-                DEBUG_PRINT("Region %i: Found block at %p of size %zu\n", region_id, next_free, next_free->size);
+                DEBUG_PRINT("Region %i: Found block at %p of size %lu in bin %u\n", region_id, next_free, next_free->size, i);
                 return_mem = alloc_region_block(next_free, blk_size, region_id);
                 break;
             }
@@ -466,28 +499,16 @@ void *smalloc(size_t size, unsigned int region_id)
         }
     }
 
-    //    clock_t toc_traverse = clock();
-
     if (!return_mem)
     {
         // We didn't find a free block large enough, must extend heap and alloc from result
-        DEBUG_PRINT("Region %i: Extending heap!\n", region_id);
+        DEBUG_PRINT("Region %i: No block found! Extending heap!\n", region_id);
         return_mem = alloc_region_block(extend_region_heap(blk_size, region_id), blk_size, region_id);
     }
     // found:
 
     pthread_mutex_unlock(&(regions[region_id]->free_list_lock));
     DEBUG_PRINT("Region %i: Exiting smalloc, thread id = %llu\n", region_id, tid);
-
-    //    if(steps > 600) {
-    //        int x = 2;
-    //    }
-
-    //    clock_t end = clock();
-    //    printf("Init time = %f\n", (double) (toc_init - tic));
-    //    printf("Traversal time = %f for %u steps\n", (double) (toc_traverse - toc_init), steps);
-    //    printf("End time = %f\n", (double) (end - toc_traverse));
-    //    printf("\tTotal = %f\n", (double) (end - tic));
 
     // Return pointer to the start of payload, i.e. skipping over header
     return (void *)(((char *)return_mem) + HEADER_SIZE);
@@ -515,9 +536,13 @@ void region_sfree(void *payload_start, unsigned int region_id)
     set_headers((struct mem_blk_header *)blk_to_free, false, blk_to_free->size);
 
     region_coalesce(&blk_to_free, region_id); // Now coalesce the free block with blocks to left and right
-
+    blk_to_free->region_id = region_id;
     put_blk_on_free_list(blk_to_free, region_id);
 
     pthread_mutex_unlock(&(regions[region_id]->free_list_lock));
     DEBUG_PRINT("Region %i: Exiting sfree, thread id = %llu\n", region_id, tid);
+}
+
+void print_info() {
+    printf("steps: %i extends: %i allocs: %i\n", steps, extends, allocs);
 }

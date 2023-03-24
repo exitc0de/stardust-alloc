@@ -85,8 +85,8 @@ void write_ones_to_payload(void *start, size_t size)
 
 void *smalloc_and_write_ones(size_t size, int region_id)
 {
-    //void *ret = smalloc(size, region_id);
-    void *ret = thread_local_smalloc(size);
+    void *ret = smalloc(size, region_id);
+    // void *ret = thread_local_smalloc(size);
     write_ones_to_payload(ret, size);
     return ret;
 }
@@ -115,8 +115,8 @@ bool check_payload_contains_only_ones(void *start, size_t size)
 bool sfree_and_check_ones(void *start, size_t size, int region_id)
 {
     bool ret = check_payload_contains_only_ones(start, size);
-    //region_sfree(start, region_id);
-    thread_local_sfree(start);
+    region_sfree(start, region_id);
+    //thread_local_sfree(start);
     return ret;
 }
 
@@ -144,46 +144,46 @@ int tests()
     size_t SEG3_2_SIZE = 8;
     size_t SEG6_SIZE = 1000000; 
 
-    void *seg1 = smalloc_and_write_ones(SEG1_SIZE, 1);
-    void *seg2 = smalloc_and_write_ones(SEG2_SIZE, 1);
-    checks[0] = sfree_and_check_ones(seg1, SEG1_SIZE, 1);
-    void *seg3 = smalloc_and_write_ones(SEG3_SIZE, 1);
-    void *seg4 = smalloc_and_write_ones(SEG4_SIZE, 1);
-    void *seg5 = smalloc_and_write_ones(SEG5_SIZE, 1);
-    void *seg2_1 = smalloc_and_write_ones(SEG2_1_SIZE, 2);
-    void *seg2_2 = smalloc_and_write_ones(SEG2_2_SIZE, 2);
-    checks[1] = sfree_and_check_ones(seg2_2, SEG2_2_SIZE, 2);
-    void *seg2_3 = smalloc_and_write_ones(SEG2_3_SIZE, 2);
-    void *seg2_4 = smalloc_and_write_ones(SEG2_4_SIZE, 2);
-    void *seg3_1 = smalloc_and_write_ones(SEG3_1_SIZE, 3);
-    void *seg3_2 = smalloc_and_write_ones(SEG3_2_SIZE, 3);
+    void *seg1 = smalloc_and_write_ones(SEG1_SIZE, 0);
+    void *seg2 = smalloc_and_write_ones(SEG2_SIZE, 0);
+    checks[0] = sfree_and_check_ones(seg1, SEG1_SIZE, 0);
+    void *seg3 = smalloc_and_write_ones(SEG3_SIZE, 0);
+    void *seg4 = smalloc_and_write_ones(SEG4_SIZE, 0);
+    void *seg5 = smalloc_and_write_ones(SEG5_SIZE, 0);
+    void *seg2_1 = smalloc_and_write_ones(SEG2_1_SIZE, 0);
+    void *seg2_2 = smalloc_and_write_ones(SEG2_2_SIZE, 0);
+    checks[1] = sfree_and_check_ones(seg2_2, SEG2_2_SIZE, 0);
+    void *seg2_3 = smalloc_and_write_ones(SEG2_3_SIZE, 0);
+    void *seg2_4 = smalloc_and_write_ones(SEG2_4_SIZE, 0);
+    void *seg3_1 = smalloc_and_write_ones(SEG3_1_SIZE, 0);
+    void *seg3_2 = smalloc_and_write_ones(SEG3_2_SIZE, 0);
 
-    print_regions();
-    checks[2] = sfree_and_check_ones(seg3, SEG3_SIZE, 1);
+    // print_regions();
+    checks[2] = sfree_and_check_ones(seg3, SEG3_SIZE, 0);
     //print_regions();
-    checks[3] = sfree_and_check_ones(seg2, SEG2_SIZE, 1);
+    checks[3] = sfree_and_check_ones(seg2, SEG2_SIZE, 0);
     //print_regions();
-    checks[4] = sfree_and_check_ones(seg4, SEG4_SIZE, 1);
-    checks[5] = sfree_and_check_ones(seg2_1, SEG2_1_SIZE, 2);
+    checks[4] = sfree_and_check_ones(seg4, SEG4_SIZE, 0);
+    checks[5] = sfree_and_check_ones(seg2_1, SEG2_1_SIZE, 0);
     //print_regions();
-    checks[6] = sfree_and_check_ones(seg5, SEG5_SIZE, 1);
+    checks[6] = sfree_and_check_ones(seg5, SEG5_SIZE, 0);
     //print_regions();
-    checks[7] = sfree_and_check_ones(seg2_3, SEG2_3_SIZE, 2);
-    checks[8] = sfree_and_check_ones(seg2_4, SEG2_4_SIZE, 2); 
-    checks[9] = sfree_and_check_ones(seg3_1, SEG3_1_SIZE, 3);
-    checks[10] = sfree_and_check_ones(seg3_2, SEG3_2_SIZE, 3);
+    checks[7] = sfree_and_check_ones(seg2_3, SEG2_3_SIZE, 0);
+    checks[8] = sfree_and_check_ones(seg2_4, SEG2_4_SIZE, 0); 
+    checks[9] = sfree_and_check_ones(seg3_1, SEG3_1_SIZE, 0);
+    checks[10] = sfree_and_check_ones(seg3_2, SEG3_2_SIZE, 0);
 
     //print_regions();
 
-    void *seg6 = smalloc_and_write_ones(SEG6_SIZE, 4);
+    void *seg6 = smalloc_and_write_ones(SEG6_SIZE, 0);
     char **str = (char **)seg6;
-    *str = "Hello World";
+    // *str = "Hello World";
 
     //print_regions();
-    checks[11] = sfree_and_check_ones(seg6, SEG6_SIZE, 4);
+    checks[11] = sfree_and_check_ones(seg6, SEG6_SIZE, 0);
     
     printf("Checks complete!\n");
-    print_regions();
+    //print_regions();
 
     for (int i = 0; i < 12; i++)
     {
